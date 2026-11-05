@@ -1,0 +1,36 @@
+services:
+  backend:
+    build: ./backend
+    container_name: monitor-ia-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/monitor.db
+    volumes:
+      - monitor-data:/data
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 15s
+      timeout: 4s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: ""
+    container_name: monitor-ia-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:80"
+
+volumes:
+  monitor-data:

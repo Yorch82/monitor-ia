@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-ink-950 text-slate-200 font-sans antialiased;
+    background-image:
+      radial-gradient(1200px 500px at 80% -10%, rgba(34, 211, 238, 0.06), transparent),
+      radial-gradient(900px 420px at 0% 0%, rgba(59, 130, 246, 0.05), transparent);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white/[0.07] bg-ink-900/70 shadow-card backdrop-blur;
+  }
+  .card-title {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400;
+  }
+  .input {
+    @apply w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2 text-sm text-slate-100
+           placeholder:text-slate-500 focus:border-accent-cyan/60 focus:outline-none focus:ring-1
+           focus:ring-accent-cyan/40;
+  }
+  .btn {
+    @apply inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition
+           focus:outline-none focus:ring-2 focus:ring-accent-cyan/40 disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-accent-cyan/90 text-ink-950 hover:bg-accent-cyan shadow-glow;
+  }
+  .btn-ghost {
+    @apply btn border border-white/10 bg-white/[0.03] text-slate-200 hover:bg-white/[0.07];
+  }
+  .btn-danger {
+    @apply btn border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20;
+  }
+}
+
+/* Scrollbars discretos */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
