@@ -64,7 +64,7 @@ class NvidiaProvider(GpuProvider):
         mem_total = None
         mem_used = None
         if mem is not None:
-            mem_used = round(mem.total_used / 1024**2, 1)
+            mem_used = round(mem.used / 1024**2, 1)      # pynvml: campos used/total
             mem_total = round(mem.total / 1024**2, 1)
 
         util = safe("util", lambda: _nvml.nvmlDeviceGetUtilizationRates(handle))
@@ -72,9 +72,15 @@ class NvidiaProvider(GpuProvider):
 
         temp = safe("temp", lambda: _nvml.nvmlDeviceGetTemperature(handle, _nvml.NVML_TEMPERATURE_GPU))
 
-        fan = None
-        if (_nvml.nvmlDeviceGetNumFans(handle) if hasattr(_nvml, "nvmlDeviceGetNumFans") else 1) > 0:
-            fan = safe("fan", lambda: _nvml.nvmlDeviceGetFanSpeed(handle, 0))
+        # El soporte de ventilador varía por GPU/driver; todo va protegido.
+        def _fan() -> Any:
+            try:
+                n_fans = _nvml.nvmlDeviceGetNumFans(handle)
+            except Exception:  # noqa: BLE001 — API antigua o GPU sin sensors
+                n_fans = 1
+            return _nvml.nvmlDeviceGetFanSpeed(handle, 0) if n_fans > 0 else None
+
+        fan = safe("fan", _fan)
 
         # mW → W
         power_draw_mw = safe("power", lambda: _nvml.nvmlDeviceGetPowerUsage(handle))
