@@ -70,12 +70,32 @@ async def forward_completion(request: Request) -> Any:
     http: httpx.AsyncClient = state.http_client
     started = time.perf_counter()
 
+    # Ayuda a capturar usage en streaming: si el cliente no pidió usage, se inyecta
+    # stream_options.include_usage (Ollama/vLLM/llama.cpp modernos lo soportan).
+    # Si el engine rechaza el campo extra, se reintenta con el body original.
+    injected = False
+    if body and body.get("stream") and isinstance(body.get("stream_options"), type(None)):
+        body = dict(body); body["stream_options"] = {"include_usage": True}
+        body_bytes = json.dumps(body, ensure_ascii=False).encode()
+        injected = True
+
     try:
         if body and body.get("stream"):
-            return await _forward_streaming(
-                http, target, headers, body_bytes, body, state, settings.token_source, started
-            )
-        return await _forward_json(http, target, headers, body_bytes, body, state, settings.token_source, started)
+            resp_stream = await _open_stream(http, target, headers, body_bytes)
+            if injected and resp_stream.status_code >= 400:
+                # Fallback: engine no soporta stream_options → reintenta con el body original.
+                await resp_stream.aclose()
+                original = {k: v for k, v in (body or {}).items() if k != "stream_options"}
+                resp_stream = await _open_stream(http, target, headers, json.dumps(original, ensure_ascii=False).encode())
+            return await _relay_stream(resp_stream, body, state, settings.token_source, started)
+        resp = await http.post(
+            target, content=body_bytes, headers=headers,
+            timeout=httpx.Timeout(READ_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
+        )
+        usage = _usage_of(resp) if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("application/json") else None
+        if usage:
+            _record_usage(state, body, usage, started, count_tokens=_should_count(settings.token_source, state))
+        return JSONResponse(status_code=resp.status_code, content=_safe_json(resp))
     except httpx.HTTPError as exc:
         log.warning("Proxy: error conectando con %s: %s", target, exc)
         return JSONResponse(
@@ -84,43 +104,16 @@ async def forward_completion(request: Request) -> Any:
         )
 
 
-async def _forward_json(
-    http: httpx.AsyncClient,
-    target: str,
-    headers: dict[str, str],
-    body_bytes: bytes,
-    body: dict[str, Any] | None,
-    state: Any,
-    token_source: str,
-    started: float,
-) -> JSONResponse:
-    """Caso simple: respuesta JSON completa."""
-    resp = await http.post(
-        target, content=body_bytes, headers=headers,
-        timeout=httpx.Timeout(READ_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
-    )
-    usage = _usage_of(resp) if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("application/json") else None
-    if usage:
-        _record_usage(state, body, usage, started, count_tokens=_should_count(token_source, state))
-    return JSONResponse(status_code=resp.status_code, content=_safe_json(resp))
-
-
-async def _forward_streaming(
-    http: httpx.AsyncClient,
-    target: str,
-    headers: dict[str, str],
-    body_bytes: bytes,
-    body: dict[str, Any] | None,
-    state: Any,
-    token_source: str,
-    started: float,
-) -> StreamingResponse:
-    """Streaming: relanza los bytes y escanea el buffer buscando el ``usage`` final."""
+async def _open_stream(http, target, headers, body_bytes):
     req = http.build_request(
         "POST", target, content=body_bytes, headers=headers,
         timeout=httpx.Timeout(READ_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
     )
-    resp = await http.send(req, stream=True)
+    return await http.send(req, stream=True)
+
+
+async def _relay_stream(resp: httpx.Response, body, state, token_source, started) -> StreamingResponse:
+    """Streaming: reenvía los bytes tal cual y escanea el buffer buscando el usage final."""
     buffer = bytearray()
 
     async def gen() -> AsyncIterator[bytes]:
