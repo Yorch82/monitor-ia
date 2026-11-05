@@ -8,6 +8,10 @@ services:
       DB_PATH: /data/monitor.db
     volumes:
       - monitor-data:/data
+      # Seguridad: logs del host para SSH (auth.log/secure) y firewall (ufw.log).
+      - /var/log:/host/log:ro
+      # Access log de nginx (pestaña Seguridad → escaneos web).
+      - nginx-logs:/host/nginx:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     extra_hosts:
@@ -29,8 +33,11 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    volumes:
+      - nginx-logs:/var/log/nginx
     ports:
       - "${APP_PORT:-8080}:80"
 
 volumes:
   monitor-data:
+  nginx-logs:

@@ -62,6 +62,21 @@ class AppConfig(BaseSettings):
     sim_vram_total_mb: float = 24576.0
     sim_ram_total_gb: float = 64.0
 
+    # ── Seguridad ─────────────────────────────────────────────────────────────
+    security_enabled: bool = True
+    # Rutas de logs del host montadas en el contenedor (separadas por coma).
+    #   auth.log/secure → SSH · ufw.log → firewall · nginx/security.log → escaneos web
+    security_log_paths: str = (
+        "/host/log/auth.log,/host/log/secure,"
+        "/host/log/ufw.log,/host/nginx/security.log"
+    )
+    security_retention_hours: int = 168  # 7 días
+    geoip_enabled: bool = True
+
+    @property
+    def security_path_list(self) -> list[str]:
+        return [p.strip() for p in self.security_log_paths.split(",") if p.strip()]
+
     @property
     def db_file(self) -> Path:
         return Path(self.db_path)

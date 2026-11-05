@@ -1,6 +1,7 @@
 /** Universidad de URLs del backend y helpers de fetch. */
 
 import type { ChartPoint, PublicSettings, Range, TelemetrySnapshot } from "../types/telemetry";
+import type { SecurityRange, SecuritySnapshot } from "../types/security";
 
 /** Base de la API: vacío en dev/prod (Vite/nginx la proxan), o URL absoluta si se define. */
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
@@ -38,6 +39,10 @@ export function fetchHistory(range: Range): Promise<{ points: ChartPoint[]; buck
 
 export function fetchSettings(): Promise<PublicSettings> {
   return getJson(`${API_BASE}/api/settings`);
+}
+
+export function fetchSecurity(range: SecurityRange): Promise<SecuritySnapshot> {
+  return getJson(`${API_BASE}/api/security?range=${range}`);
 }
 
 export async function updateSettings(patch: Partial<PublicSettings> & { thresholds?: PublicSettings["thresholds"] } & Record<string, unknown>): Promise<PublicSettings> {

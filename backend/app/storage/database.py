@@ -29,6 +29,13 @@ RANGES: dict[str, tuple[float, float]] = {
     "24h": (86400, 60),
 }
 
+# Rangos de la pestaña Seguridad (más amplios, buckets de 2 min / 15 min / 1 h).
+SECURITY_RANGES: dict[str, tuple[float, float]] = {
+    "1h": (3600, 120),
+    "24h": (86400, 900),
+    "7d": (7 * 86400, 3600),
+}
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS samples (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,12 +52,46 @@ CREATE TABLE IF NOT EXISTS samples (
     ram_pct REAL,
     cpu_pct REAL,
     cost_per_hour REAL,
+    energy_delta_wh REAL,
     payload TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+
+-- ── Seguridad ────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS security_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    kind TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    classification TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    username TEXT,
+    path TEXT,
+    user_agent TEXT,
+    port INTEGER,
+    detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_security_ts ON security_events(ts);
+CREATE INDEX IF NOT EXISTS idx_security_ip ON security_events(ip);
+
+CREATE TABLE IF NOT EXISTS security_geo (
+    ip TEXT PRIMARY KEY,
+    country_code TEXT,
+    country TEXT,
+    city TEXT,
+    isp TEXT,
+    hosting INTEGER DEFAULT 0,
+    updated_at REAL
+);
+
+CREATE TABLE IF NOT EXISTS security_offsets (
+    path TEXT PRIMARY KEY,
+    offset INTEGER NOT NULL,
+    updated_at REAL
 );
 """
 
@@ -65,6 +106,11 @@ class HistoryStore:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA)
+        # Migración: bases creadas antes guardaban la energía acumulada (energy_wh)
+        # y no la energía por muestra (energy_delta_wh). Añadimos la nueva columna.
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(samples)")}
+        if "energy_delta_wh" not in columns:
+            self._conn.execute("ALTER TABLE samples ADD COLUMN energy_delta_wh REAL")
         self._conn.commit()
 
     # ── samples ──────────────────────────────────────────────────────────────
@@ -81,7 +127,7 @@ class HistoryStore:
         gpu_temp_c: float | None,
         vram_pct: float | None,
         power_w: float | None,
-        energy_wh: float,
+        energy_delta_wh: float,
         ram_pct: float | None,
         cpu_pct: float | None,
         cost_per_hour: float | None,
@@ -90,11 +136,11 @@ class HistoryStore:
         with self._lock:
             self._conn.execute(
                 """INSERT INTO samples (ts, input_total, output_total, moving_avg_tps,
-                   context_pct, gpu_pct, gpu_temp_c, vram_pct, power_w, energy_wh,
+                   context_pct, gpu_pct, gpu_temp_c, vram_pct, power_w, energy_delta_wh,
                    ram_pct, cpu_pct, cost_per_hour, payload)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (ts, input_total, output_total, moving_avg_tps, context_pct, gpu_pct,
-                 gpu_temp_c, vram_pct, power_w, energy_wh, ram_pct, cpu_pct,
+                 gpu_temp_c, vram_pct, power_w, energy_delta_wh, ram_pct, cpu_pct,
                  cost_per_hour, json.dumps(payload, ensure_ascii=False)),
             )
             self._conn.commit()
@@ -103,7 +149,7 @@ class HistoryStore:
         """Suma de energía Wh registrada desde una marca temporal (coste diario)."""
         with self._lock:
             row = self._conn.execute(
-                "SELECT COALESCE(SUM(energy_wh), 0) FROM samples WHERE ts >= ?", (ts_from,)
+                "SELECT COALESCE(SUM(energy_delta_wh), 0) FROM samples WHERE ts >= ?", (ts_from,)
             ).fetchone()
         return float(row[0] if row else 0.0)
 
@@ -216,6 +262,261 @@ class HistoryStore:
         with self._lock:
             self._conn.execute("DELETE FROM settings WHERE key = 'runtime'")
             self._conn.commit()
+
+    # ── seguridad: eventos, offsets y geolocalización ──────────────────────
+
+    def insert_security_events(self, events: list[dict[str, Any]]) -> None:
+        """Inserta un lote de eventos de seguridad normalizados."""
+        if not events:
+            return
+        with self._lock:
+            self._conn.executemany(
+                """INSERT INTO security_events
+                   (ts, kind, ip, classification, severity, username, path, user_agent, port, detail)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                [
+                    (
+                        e["ts"], e["kind"], e["ip"], e["classification"], e["severity"],
+                        e.get("username"), e.get("path"), e.get("user_agent"),
+                        e.get("port"), e.get("detail") or "",
+                    )
+                    for e in events
+                ],
+            )
+            self._conn.commit()
+
+    def prune_security(self, retention_hours: int) -> int:
+        cutoff = time.time() - retention_hours * 3600
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM security_events WHERE ts < ?", (cutoff,))
+            self._conn.commit()
+        return max(0, cur.rowcount or 0)
+
+    def get_security_offset(self, path: str) -> int | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT offset FROM security_offsets WHERE path = ?", (path,)
+            ).fetchone()
+        return int(row[0]) if row else None
+
+    def set_security_offset(self, path: str, offset: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO security_offsets (path, offset, updated_at) VALUES (?,?,?) "
+                "ON CONFLICT(path) DO UPDATE SET offset=excluded.offset, updated_at=excluded.updated_at",
+                (path, offset, time.time()),
+            )
+            self._conn.commit()
+
+    def security_geo_upsert(
+        self, ip: str, country_code: str, country: str, city: str, isp: str,
+        hosting: bool, ts: float,
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO security_geo (ip, country_code, country, city, isp, hosting, updated_at)
+                   VALUES (?,?,?,?,?,?,?)
+                   ON CONFLICT(ip) DO UPDATE SET
+                     country_code=excluded.country_code, country=excluded.country,
+                     city=excluded.city, isp=excluded.isp, hosting=excluded.hosting,
+                     updated_at=excluded.updated_at""",
+                (ip, country_code, country, city, isp, int(hosting), ts),
+            )
+            self._conn.commit()
+
+    def security_unenriched_ips(self, limit: int, failure_retry_ts: float) -> list[str]:
+        """IPs con eventos y sin geolocalización (o con fallo caducado)."""
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT e.ip, COUNT(*) AS c
+                   FROM security_events e
+                   LEFT JOIN security_geo g ON g.ip = e.ip
+                   WHERE g.ip IS NULL
+                      OR (g.country_code IN ('??', '') AND g.updated_at < ?)
+                   GROUP BY e.ip
+                   ORDER BY c DESC
+                   LIMIT ?""",
+                (failure_retry_ts, limit),
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def security_snapshot(self, range_key: str) -> dict[str, Any]:
+        """Agregados para la pestaña Seguridad (KPIs, timeline, tops y recientes)."""
+        span, bucket = SECURITY_RANGES[range_key]
+        now = time.time()
+        since = now - span
+
+        with self._lock:
+            kind_rows = self._conn.execute(
+                "SELECT kind, COUNT(*) FROM security_events WHERE ts >= ? GROUP BY kind",
+                (since,),
+            ).fetchall()
+            totals_row = self._conn.execute(
+                """SELECT COUNT(*), COUNT(DISTINCT e.ip), COUNT(DISTINCT g.country_code)
+                   FROM security_events e LEFT JOIN security_geo g ON g.ip = e.ip
+                   WHERE e.ts >= ?""",
+                (since,),
+            ).fetchone()
+            class_rows = self._conn.execute(
+                """SELECT cls, COUNT(*) FROM (
+                     SELECT ip,
+                       CASE WHEN SUM(CASE WHEN classification='bot' THEN 1 ELSE 0 END) > 0 THEN 'bot'
+                            WHEN SUM(CASE WHEN classification='human' THEN 1 ELSE 0 END) > 0 THEN 'human'
+                            ELSE 'unknown' END AS cls
+                     FROM security_events WHERE ts >= ? GROUP BY ip
+                   ) GROUP BY cls""",
+                (since,),
+            ).fetchall()
+            timeline_rows = self._conn.execute(
+                f"""SELECT (CAST(ts / {bucket} AS INTEGER) * {bucket}) AS bts, kind, COUNT(*)
+                    FROM security_events WHERE ts >= ? GROUP BY bts, kind ORDER BY bts""",
+                (since,),
+            ).fetchall()
+            top_ips = self._conn.execute(
+                """SELECT e.ip, COUNT(*) AS events, MAX(e.ts) AS last_ts, MIN(e.ts) AS first_ts,
+                          SUM(CASE WHEN e.kind='ssh_failed' THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN e.kind='ssh_success' THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN e.kind='ssh_scan' THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN e.kind='firewall_block' THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN e.kind='http_suspicious' THEN 1 ELSE 0 END),
+                          MAX(g.country_code), MAX(g.country), MAX(g.city), MAX(g.isp),
+                          CASE
+                            WHEN SUM(CASE WHEN e.classification='bot' THEN 1 ELSE 0 END) > 0 THEN 'bot'
+                            WHEN SUM(CASE WHEN e.classification='human' THEN 1 ELSE 0 END) > 0 THEN 'human'
+                            ELSE 'unknown'
+                          END
+                   FROM security_events e LEFT JOIN security_geo g ON g.ip = e.ip
+                   WHERE e.ts >= ?
+                   GROUP BY e.ip ORDER BY events DESC LIMIT 10""",
+                (since,),
+            ).fetchall()
+            top_countries = self._conn.execute(
+                """SELECT COALESCE(g.country_code, '??') AS cc,
+                          COALESCE(g.country, 'Desconocido') AS country,
+                          COUNT(*) AS events, COUNT(DISTINCT e.ip) AS ips
+                   FROM security_events e LEFT JOIN security_geo g ON g.ip = e.ip
+                   WHERE e.ts >= ? GROUP BY cc ORDER BY events DESC LIMIT 8""",
+                (since,),
+            ).fetchall()
+            top_usernames = self._conn.execute(
+                """SELECT username, COUNT(*) AS events FROM security_events
+                   WHERE ts >= ? AND username IS NOT NULL AND username != ''
+                   GROUP BY username ORDER BY events DESC LIMIT 8""",
+                (since,),
+            ).fetchall()
+            top_ports = self._conn.execute(
+                """SELECT port, COUNT(*) AS events FROM security_events
+                   WHERE ts >= ? AND port IS NOT NULL
+                   GROUP BY port ORDER BY events DESC LIMIT 8""",
+                (since,),
+            ).fetchall()
+            top_paths = self._conn.execute(
+                """SELECT path, COUNT(*) AS events FROM security_events
+                   WHERE ts >= ? AND path IS NOT NULL AND path != ''
+                   GROUP BY path ORDER BY events DESC LIMIT 8""",
+                (since,),
+            ).fetchall()
+            last_success = self._conn.execute(
+                """SELECT e.ts, e.ip, e.username, g.country_code, g.country
+                   FROM security_events e LEFT JOIN security_geo g ON g.ip = e.ip
+                   WHERE e.kind = 'ssh_success' AND e.ts >= ?
+                   ORDER BY e.ts DESC LIMIT 1""",
+                (since,),
+            ).fetchone()
+            recent = self._conn.execute(
+                """SELECT e.ts, e.kind, e.ip, e.classification, e.severity, e.username,
+                          e.path, e.port, e.detail, e.user_agent,
+                          g.country_code, g.country, g.city
+                   FROM security_events e LEFT JOIN security_geo g ON g.ip = e.ip
+                   WHERE e.ts >= ? ORDER BY e.ts DESC LIMIT 30""",
+                (since,),
+            ).fetchall()
+
+        kinds = {row[0]: int(row[1]) for row in kind_rows}
+        total_events, unique_ips, countries = (
+            (int(totals_row[0]), int(totals_row[1]), int(totals_row[2])) if totals_row else (0, 0, 0)
+        )
+        classes = {row[0]: int(row[1]) for row in class_rows}
+        bots = classes.get("bot", 0)
+        humans = classes.get("human", 0)
+        unknown = classes.get("unknown", 0)
+        known_agents = bots + humans + unknown
+
+        timeline_map: dict[int, dict[str, Any]] = {}
+        for bts, kind, count in timeline_rows:
+            point = timeline_map.setdefault(
+                int(bts),
+                {"t": int(bts) * 1000, "ssh_failed": 0, "ssh_success": 0,
+                 "ssh_scan": 0, "firewall_blocks": 0, "web_suspicious": 0},
+            )
+            key = {
+                "ssh_failed": "ssh_failed", "ssh_success": "ssh_success",
+                "ssh_scan": "ssh_scan", "firewall_block": "firewall_blocks",
+                "http_suspicious": "web_suspicious",
+            }.get(kind, kind)
+            if key in point:
+                point[key] += int(count)
+
+        ports = [{"port": int(p), "attempts": int(c)} for p, c in top_ports]
+        top_country_rows = [
+            {"country_code": cc, "country": c, "events": int(ev), "ips": int(ips)}
+            for cc, c, ev, ips in top_countries
+        ]
+
+        return {
+            "summary": {
+                "total_events": total_events,
+                "ssh_failed": kinds.get("ssh_failed", 0),
+                "ssh_success": kinds.get("ssh_success", 0),
+                "ssh_scan": kinds.get("ssh_scan", 0),
+                "firewall_blocks": kinds.get("firewall_block", 0),
+                "web_suspicious": kinds.get("http_suspicious", 0),
+                "unique_ips": unique_ips,
+                "countries": countries,
+                "bots": bots,
+                "humans": humans,
+                "unknown": unknown,
+                "bot_pct": round(bots / known_agents * 100, 1) if known_agents else None,
+                "events_per_hour": round(total_events / max(span / 3600, 1e-9), 2),
+                "last_ssh_success": (
+                    {
+                        "ts": last_success[0], "ip": last_success[1],
+                        "username": last_success[2],
+                        "country_code": last_success[3], "country": last_success[4],
+                    }
+                    if last_success else None
+                ),
+                "top_port": ports[0] if ports else None,
+                "top_country": top_country_rows[0] if top_country_rows else None,
+            },
+            "timeline": [timeline_map[k] for k in sorted(timeline_map)],
+            "top_ips": [
+                {
+                    "ip": ip, "events": int(events), "last_ts": last_ts, "first_ts": first_ts,
+                    "ssh_failed": int(ssh_failed), "ssh_success": int(ssh_success),
+                    "ssh_scan": int(ssh_scan), "firewall_blocks": int(firewall_blocks),
+                    "web_suspicious": int(web_suspicious),
+                    "country_code": cc, "country": country, "city": city, "isp": isp,
+                    "classification": cls,
+                }
+                for (ip, events, last_ts, first_ts, ssh_failed, ssh_success, ssh_scan,
+                     firewall_blocks, web_suspicious, cc, country, city, isp, cls) in top_ips
+            ],
+            "top_countries": top_country_rows,
+            "top_usernames": [{"username": u, "attempts": int(c)} for u, c in top_usernames],
+            "top_ports": ports,
+            "top_paths": [{"path": p, "attempts": int(c)} for p, c in top_paths],
+            "recent_events": [
+                {
+                    "ts": ts, "kind": kind, "ip": ip, "classification": cls,
+                    "severity": severity, "username": username, "path": path,
+                    "port": port, "detail": detail, "user_agent": ua,
+                    "country_code": cc, "country": country, "city": city,
+                }
+                for (ts, kind, ip, cls, severity, username, path, port, detail, ua,
+                     cc, country, city) in recent
+            ],
+        }
 
     def close(self) -> None:
         with self._lock:

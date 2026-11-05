@@ -159,3 +159,16 @@ async def reset_session(request: Request) -> dict[str, Any]:
     """Reinicia tokens/energía/costes de la sesión (no borra el histórico)."""
     request.app.state.telemetry_sampler.reset_session()
     return {"status": "ok"}
+
+
+# ── seguridad ────────────────────────────────────────────────────────────────
+
+
+@router.get("/api/security")
+async def security(request: Request, range: str = "24h") -> Any:
+    """Resumen de seguridad del servidor (SSH, firewall, web, GeoIP)."""
+    from app.storage.database import SECURITY_RANGES
+
+    if range not in SECURITY_RANGES:
+        return JSONResponse(status_code=400, content={"detail": "rango inválido"})
+    return request.app.state.security_service.snapshot(range)

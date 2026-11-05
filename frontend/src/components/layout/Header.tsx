@@ -1,10 +1,10 @@
 /** Cabecera global: marca, navegación, estado de conexión, modo y export CSV. */
 
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useMonitor } from "../../state/MonitorContext";
 import { exportCsvUrl } from "../../lib/api";
 import type { Range } from "../../types/telemetry";
-import { IconActivity, IconDownload, IconSettings } from "../Icons";
+import { IconActivity, IconDownload, IconSettings, IconShield } from "../Icons";
 import { RANGES } from "../../lib/points";
 
 function ConnectionBadge() {
@@ -40,7 +40,11 @@ function ModeBadge() {
 
 export function Header() {
   const { range } = useMonitor();
-  const navigate = useNavigate();
+  const navItems = [
+    { to: "/", label: "Dashboard", end: true, icon: <IconActivity className="h-4 w-4" /> },
+    { to: "/security", label: "Seguridad", end: false, icon: <IconShield className="h-4 w-4" /> },
+    { to: "/settings", label: "Ajustes", end: false, icon: <IconSettings className="h-4 w-4" /> },
+  ];
   return (
     <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-ink-950/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -57,27 +61,19 @@ export function Header() {
         </div>
 
         <nav className="flex items-center gap-1.5">
-          {[
-            { to: "/", label: "Dashboard", end: true },
-            { to: "/settings", label: "Ajustes" },
-          ].map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                `inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition ${
                   isActive ? "bg-white/[0.08] text-slate-50" : "text-slate-400 hover:text-slate-200"
                 }`
               }
             >
-              {item.label === "Ajustes" ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <IconSettings className="h-4 w-4" /> <span className="hidden sm:inline">Ajustes</span>
-                </span>
-              ) : (
-                item.label
-              )}
+              {item.icon}
+              <span className="hidden md:inline">{item.label}</span>
             </NavLink>
           ))}
         </nav>
@@ -94,13 +90,6 @@ export function Header() {
           >
             <span className="hidden sm:inline">Exportar CSV</span>
             <IconDownload className="h-4 w-4 sm:ml-1" />
-          </button>
-          <button
-            title="Ajustes"
-            onClick={() => navigate("/settings")}
-            className="btn-ghost !px-2.5 sm:hidden"
-          >
-            <IconSettings className="h-4 w-4" />
           </button>
         </div>
       </div>

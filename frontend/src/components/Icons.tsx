@@ -110,6 +110,40 @@ export const IconCheck = (p: IconProps) => (
   </svg>
 );
 
+export const IconShield = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </svg>
+);
+
+export const IconGlobe = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+
+export const IconMapPin = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
+export const IconUserShield = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M12 2l8 3v7c0 6-8 10-8 10S4 18 4 12V5l8-3z" />
+    <path d="M9 12l2 2 4-4" />
+  </svg>
+);
+
+export const IconTerminal = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="M6 9l3 3-3 3M13 15h5" />
+  </svg>
+);
+
 export const IconX = (p: IconProps) => (
   <svg {...base} {...p}>
     <path d="M18 6L6 18M6 6l12 12" />

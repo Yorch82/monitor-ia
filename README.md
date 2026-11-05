@@ -7,6 +7,8 @@ ventilador, **potencia eléctrica**, **coste energético en euros** y RAM del si
 - **Backend** en el servidor (192.168.1.35 en LAN, **100.115.55.87** en VPN): Python + FastAPI + SQLite.
 - **Frontend** accesible desde cualquier equipo externo (PC de escritorio, portátil…) con un navegador:
   React + Tailwind + Recharts, tema oscuro tipo panel de control.
+- **Pestaña Seguridad**: intentos SSH, bloqueos de firewall, escaneos web, clasificación bot/usuario,
+  país/ciudad/ISP de origen y métricas de amenaza del servidor.
 - **Modo simulación** con datos sintéticos realistas para probar todo sin hardware ni modelo.
 
 ---
@@ -54,11 +56,13 @@ ventilador, **potencia eléctrica**, **coste energético en euros** y RAM del si
 | **Potencia** | W actuales / límite (TDP) sumando GPUs, **energía integrada de sesión en Wh/kWh** |
 | **Coste** | € en tiempo real y acumulado (`kWh × precio`), proyección hora/día/mes al ritmo actual, **€ por 1.000 tokens generados**, presupuesto diario con alerta |
 | **Sistema** | RAM usada/total (GB, %), CPU %, swap, uptime |
+| **Seguridad** | intentos SSH (fallidos/exitosos/escaneos), bloqueos de firewall y puertos, escaneos web, IPs únicas, países/ciudad/ISP, usuarios objetivo, rutas escaneadas, bots vs humanos |
 
 ### Fuentes de datos
 - **GPU y potencia**: NVIDIA **NVML** (`nvidia-ml-py`), con capa de abstracción preparada para **AMD** (`rocm-smi --json`) y **Apple Silicon** (`powermetrics`). Multi-GPU: una tarjeta por GPU.
 - **RAM/CPU/swap**: `psutil`.
 - **Tokens y contexto**: proxy OpenAI-compatible (recomendado, captura `usage`) y/o counters Prometheus de llama.cpp (`llamacpp:tokens_*_total`) y vLLM (`vllm:prompt_tokens_total`, `vllm:generation_tokens_total`).
+- **Seguridad**: `auth.log`/`secure` (SSH), `ufw.log` (firewall), access log de nginx (escaneos web) y geolocalización de IPs con ip-api.com + caché SQLite.
 - **Simulación**: máquina de estados sintética (idle→prompt→generate) con inercia térmica y ruido, totalmente realista.
 
 ---
@@ -141,9 +145,33 @@ probar táctilmente el dashboard, las alertas y los ajustes desde cualquier PC.
 - **Gráficas** (tokens, recursos, potencia) con selector **1 m / 15 min / 1 h / 24 h** que también alimenta el **export CSV** del botón de la cabecera (`/api/export.csv?range=…`).
 - **Gauges circulares** por GPU (tarjeta por GPU con VRAM, temp, fan, W), TDP y RAM.
 - **Panel de coste**: sesión, diario, proyecciones a 1 h/día/mes y **€/1 k tokens** con barra de presupuesto diario.
+- **Pestaña Seguridad** (`/security`): estado de las fuentes (SSH, firewall, nginx, GeoIP), intentos SSH,
+  IPs/países con más actividad, bots vs humanos, usuarios objetivo, puertos y rutas escaneadas y eventos recientes.
 - **Ajustes** (`/settings`): €/kWh, intervalo de refresco, URL del servidor de inferencia, ventana de contexto, fuente de tokens, webhook, retención, umbrales y toogles de simulación/proveedor.
 - **Reiniciar sesión**: desde Ajustes, borra hueco de tokens/energía/coste de la sesión actual (el histórico en disco no se toca).
 - **Alertas visuales**: banner superior + toasts automáticos cuando se activa un umbral.
+
+### Seguridad del servidor
+
+El backend lee los logs del host (solo lectura) mediante los volúmenes que ya trae `docker-compose.yml`:
+
+| Fuente | Fichero por defecto | Datos |
+|---|---|---|
+| SSH | `/var/log/auth.log` o `/var/log/secure` | intentos fallidos, logins aceptados, escaneos SSH, usuarios objetivo |
+| Firewall | `/var/log/ufw.log` | conexiones bloqueadas, IP origen y puerto destino |
+| Nginx | volumen `nginx-logs` | rutas de escaneo (`.env`, `wp-admin`, `.git`…) y sondeos a la API |
+| GeoIP | ip-api.com (caché 30 días) | país, ciudad, ISP; IPs privadas/CGNAT → «Red local» |
+
+- Activa el logging de UFW si aún no lo está: `sudo ufw logging on`.
+- Los logs se leen **de forma incremental** (offsets en SQLite, tolerante a rotación) y se agregan por hora/día.
+- Retención configurable (`SECURITY_RETENTION_HOURS=168` → 7 días). La clasificación bot/humano es heurística:
+  fallos SSH y patrones de escáner ⇒ bot; un login SSH correcto ⇒ humano.
+- **Privacidad**: la geolocalización consulta `ip-api.com` (HTTP) solo para IPs públicas y cachea el resultado;
+  puedes desactivarla con `GEOIP_ENABLED=false`. Las IPs de la LAN/Tailscale no salen del servidor.
+- En sistemas sin `auth.log` (solo journald) instala `rsyslog` o apunta `SECURITY_LOG_PATHS` a otro fichero.
+  En Windows/macOS con Docker Desktop `/var/log` no contiene los logs del host: la pestaña muestra "sin datos"
+  con las fuentes en ámbar (no rompe nada).
+- Endpoint: `GET /api/security?range=1h|24h|7d`.
 
 ### Alertas configurables
 contexto > 90 % · temperatura GPU > 80 ºC · VRAM > 95 % · RAM > 90 % · coste diario > límite €.
@@ -160,14 +188,14 @@ Con `WEBHOOK_URL` configurado, cada activación/escalado dispara un `POST` JSON:
 
 ```
 monitor-ia/
-├── docker-compose.yml            # backend + frontend (nginx)
+├── docker-compose.yml            # backend + frontend (nginx) + volúmenes de logs
 ├── docker-compose.gpu.yml        # overlay para NVML/GPU NVIDIA real
 ├── .env.example
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt          # + requirements-dev.txt (pytest)
 │   ├── pytest.ini
-│   ├── tests/                    # costes, contexto, alertas, settings
+│   ├── tests/                    # costes, contexto, alertas, settings, seguridad
 │   └── app/
 │       ├── config.py             # .env → AppConfig (pydantic-settings)
 │       ├── main.py               # create_app + lifespan (wiring completo)
@@ -175,16 +203,17 @@ monitor-ia/
 │       │                         # agregadores de tokens y alertas (todo y solo esto)
 │       ├── metrics/              # base.py (fábrica) + nvidia.py, amd.py, apple.py, system.py
 │       ├── inference/            # monitor.py (health+/metrics+contexto) y proxy.py (usage)
+│       ├── security/             # parsers.py (SSH/UFW/nginx), middleware.py, service.py (GeoIP)
 │       ├── telemetry/            # sampler.py, simulator.py, hub.py (WS), notifier.py (webhook)
-│       ├── storage/database.py   # SQLite: samples, settings runtime, prune, CSV, bucketizado
+│       ├── storage/database.py   # SQLite: samples, seguridad, settings, CSV, bucketizado
 │       └── api/routes.py         # REST + WebSocket
 └── frontend/
-    ├── Dockerfile + nginx.conf
+    ├── Dockerfile + nginx.conf   # nginx también escribe el access log de seguridad
     └── src/
         ├── state/MonitorContext.tsx   # WebSocket + histórico + rango compartido
         ├── lib/ (api, format, points) # fetch, unidades, mapeo snapshot→chart
         ├── components/ (layout, dashboard, charts, ui) # KPIs, gauges, charts, toasts
-        └── pages/ (Dashboard, Settings)
+        └── pages/ (Dashboard, Security, Settings)
 ```
 
 ---
@@ -201,7 +230,8 @@ monitor-ia/
 | GET/PUT | `/api/settings` | settings runtime (precio, intervalo, inferencia, umbrales…) |
 | POST | `/api/settings/reset` | vuelve a los defaults del `.env` |
 | POST | `/api/session/reset` | reinicia tokens/energía/coste de sesión |
-| POST | `/proxy/v1/chat/completions`, `/proxy/v1/completions` | pasarela OpenAI-compatible con captura de usage |
+| GET | `/api/security?range=1h\|24h\|7d` | intentos SSH, firewall, escaneos web, países y bots |
+| POST | `/proxy/v1/chat/completions`, `/proxy/v1/completions`, `/proxy/v1/responses` | pasarela OpenAI-compatible con captura de usage |
 | GET | `/docs` | Swagger/OpenAPI |
 
 ---
@@ -212,8 +242,9 @@ monitor-ia/
 cd backend
 python -m venv .venv && source .venv/bin/activate   # o activa .venv\Scripts\activate en Windows
 pip install -r requirements-dev.txt
-pytest        # → 32 tests: costes (€, kWh, proyecciones, €/1k), contexto (70/90, límites),
-              #    alertas (umbrales, cooldown, escalado), settings (validación/clamps)
+pytest        # → 45 tests: costes (€, kWh, proyecciones, €/1k), contexto (70/90, límites),
+              #    alertas (umbrales, cooldown, escalado), settings, energía SQLite y
+              #    parsers de seguridad (SSH/UFW/nginx, GeoIP, bots)
 ```
 
 ## 9. Desarrollo sin Docker

@@ -23,6 +23,8 @@ from app.inference.monitor import InferenceMonitor
 from app.inference.proxy import router as proxy_router
 from app.metrics.base import create_provider
 from app.metrics.system import SystemSampler
+from app.security.middleware import SecurityHTTPMiddleware, SecurityRecorder
+from app.security.service import SecurityService
 from app.storage.database import HistoryStore
 from app.telemetry.hub import TelemetryHub
 from app.telemetry.sampler import TelemetrySampler
@@ -59,6 +61,7 @@ def create_app() -> FastAPI:
     }
     simulator = Simulator(config)
     system_sampler = SystemSampler()
+    security_recorder = SecurityRecorder(enabled=config.security_enabled)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -79,6 +82,7 @@ def create_app() -> FastAPI:
             publish=hub.broadcast,
             webhook_client=http,
         )
+        security = SecurityService(config, store, http, security_recorder)
         sampler_ref["sampler"] = sampler
 
         app.state.telemetry_sampler = sampler
@@ -87,6 +91,8 @@ def create_app() -> FastAPI:
         app.state.history_store = store
         app.state.inference_monitor = monitor
         app.state.http_client = http
+        app.state.security_service = security
+        app.state.security_recorder = security_recorder
         # El proxy necesita acceso al agregador de tokens vía proxy y al monitor.
         app.state.proxy_aggregator = aggregators["proxy"]
         app.state.token_aggregators = aggregators
@@ -95,11 +101,13 @@ def create_app() -> FastAPI:
             log.info("MODO LIVE: proveedor GPU=%s | inferencia=%s", provider.name, settings.get().inference_base_url)
         # El primer arranque del sampler ocurre tras completar el estado de la app.
         await sampler.start()
+        await security.start()
         log.info("Monitor IA listo (intervalo=%dms, simulación=%s)", settings.get().refresh_interval_s * 1000, settings.get().simulation_mode)
         try:
             yield
         finally:
             await sampler.stop()
+            await security.stop()
             await http.aclose()
             store.close()
             log.info("Monitor IA detenido")
@@ -119,6 +127,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    app.add_middleware(SecurityHTTPMiddleware, recorder=security_recorder)
 
     app.include_router(api_router)
     app.include_router(proxy_router)

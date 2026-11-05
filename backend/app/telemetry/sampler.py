@@ -83,6 +83,7 @@ class TelemetrySampler:
         self._started_ts = time.time()
         self._last_tick_ts: float | None = None
         self._energy_session_wh = 0.0
+        self._last_stored_energy_wh = 0.0  # para guardar deltas de energía por muestra
         self._tick_count = 0
         self._latest_frame: TelemetryFrame | None = None
         self._task: asyncio.Task | None = None
@@ -317,6 +318,10 @@ class TelemetrySampler:
 
     def _store_sample(self, frame: TelemetryFrame) -> None:
         try:
+            # Se guarda la energía CONSUMIDA EN ESTE TICK (delta), no la acumulada:
+            # el coste diario se obtiene sumando estos deltas.
+            energy_delta = max(0.0, self._energy_session_wh - self._last_stored_energy_wh)
+            self._last_stored_energy_wh = self._energy_session_wh
             self.store.insert_sample(
                 ts=frame.ts,
                 payload=frame.to_dict(),
@@ -328,7 +333,7 @@ class TelemetrySampler:
                 gpu_temp_c=frame.gpu_temp_max_c,
                 vram_pct=frame.vram_avg_pct,
                 power_w=frame.power.current_w,
-                energy_wh=round(self._energy_session_wh, 4),
+                energy_delta_wh=round(energy_delta, 6),
                 ram_pct=frame.system.ram_pct,
                 cpu_pct=frame.system.cpu_pct,
                 cost_per_hour=frame.cost.cost_per_hour,
@@ -371,5 +376,6 @@ class TelemetrySampler:
             agg.reset_session()
         self.simulator.reset()
         self._energy_session_wh = 0.0
+        self._last_stored_energy_wh = 0.0
         self._alerts.reset()
         log.info("Sesión de métricas reiniciada")
