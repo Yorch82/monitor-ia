@@ -36,6 +36,10 @@ READ_TIMEOUT_S = 600.0  # generaciones largas con streaming
 
 _USAGE_KEY = "usage"
 
+# Endpoints de generación cuya respuesta contiene ``usage`` (chat
+# completions clásica + Responses API de OpenAI que usa Open WebUI moderno).
+_GEN_PATHS = {"chat/completions", "completions", "responses"}
+
 
 
 
@@ -86,7 +90,8 @@ async def forward_v1(request: Request, path: str) -> Any:
     # stream_options.include_usage (Ollama/vLLM/llama.cpp modernos lo soportan).
     # Si el engine rechaza el campo extra, se reintenta con el body original.
     injected = False
-    if body and body.get("stream") and isinstance(body.get("stream_options"), type(None)):
+    if body and body.get("stream") and path in ("chat/completions", "completions") \
+            and body.get("stream_options") is None:
         body = dict(body); body["stream_options"] = {"include_usage": True}
         body_bytes = json.dumps(body, ensure_ascii=False).encode()
         injected = True
@@ -99,6 +104,17 @@ async def forward_v1(request: Request, path: str) -> Any:
                 get_url, headers=headers,
                 timeout=httpx.Timeout(30.0, connect=CONNECT_TIMEOUT_S),
             )
+            return JSONResponse(status_code=resp.status_code, content=_safe_json(resp))
+        if path not in _GEN_PATHS:
+            # POST no-generativo (embeddings, files…): passthrough puro.
+            resp = await http.post(
+                target, content=body_bytes, headers=headers,
+                timeout=httpx.Timeout(READ_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
+            )
+            if resp.status_code == 200:
+                usage = _usage_of(resp)
+                if usage:
+                    _record_usage(state, body, usage, started, count_tokens=_should_count(settings.token_source, state))
             return JSONResponse(status_code=resp.status_code, content=_safe_json(resp))
         if body and body.get("stream"):
             resp_stream = await _open_stream(http, target, headers, body_bytes)
@@ -186,24 +202,31 @@ def _usage_tokens(obj: dict[str, Any]) -> dict[str, Any] | None:
     """Normaliza el bloque usage a {input, output}. Soporta variantes de engines."""
     usage = obj.get(_USAGE_KEY)
     if not isinstance(usage, dict):
+        # Responses API: usage anidada en {"type":"response.completed","response":{usage}}.
+        inner = obj.get("response")
+        usage = inner.get(_USAGE_KEY) if isinstance(inner, dict) else None
+    if not isinstance(usage, dict):
         return None
     data = usage if isinstance(usage, dict) else {}
     input_tokens = (
         data.get("prompt_tokens")
         or data.get("prompt_eval_count")  # Ollama native
-        or data.get("input_tokens")
+        or data.get("input_tokens")       # Responses API
         or 0
     )
     output_tokens = (
         data.get("completion_tokens")
-        or data.get("eval_count")  # Ollama native
-        or data.get("output_tokens")
+        or data.get("eval_count")         # Ollama native
+        or data.get("output_tokens")      # Responses API
         or 0
     )
     try:
-        return {"input": max(0, int(input_tokens)), "output": max(0, int(output_tokens))}
+        out_i = max(0, int(input_tokens)); out_o = max(0, int(output_tokens))
     except (TypeError, ValueError, json.JSONDecodeError):
         return None
+    if out_i == 0 and out_o == 0:
+        return None
+    return {"input": out_i, "output": out_o}
 
 
 def _should_count(token_source: str, state: Any) -> bool:
