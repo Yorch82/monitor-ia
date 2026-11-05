@@ -71,7 +71,14 @@ async def forward_v1(request: Request, path: str) -> Any:
     elif client_auth:  # pass-through de la auth del cliente si el backend no tiene key
         headers["Authorization"] = client_auth
 
-    target = f"{settings.inference_base_url.rstrip('/')}{request.url.path[len('/proxy'):]}"
+    # Evita duplicar el sufijo /v1 si el base ya lo incluye
+    # (http://host:11434/v1 + /v1/models → http://host:11434/v1/models).
+    base_clean = settings.inference_base_url.rstrip("/")
+    sub_path = request.url.path[len("/proxy"):]
+    if base_clean.endswith("/v1") and sub_path.startswith("/v1"):
+        target = base_clean[:-3] + sub_path
+    else:
+        target = base_clean + sub_path
     http: httpx.AsyncClient = state.http_client
     started = time.perf_counter()
 
