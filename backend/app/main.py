@@ -87,6 +87,9 @@ def create_app() -> FastAPI:
         app.state.history_store = store
         app.state.inference_monitor = monitor
         app.state.http_client = http
+        # El proxy necesita acceso al agregador de tokens vía proxy y al monitor.
+        app.state.proxy_aggregator = aggregators["proxy"]
+        app.state.token_aggregators = aggregators
 
         if not settings.get().simulation_mode:
             log.info("MODO LIVE: proveedor GPU=%s | inferencia=%s", provider.name, settings.get().inference_base_url)
