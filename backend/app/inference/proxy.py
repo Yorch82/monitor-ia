@@ -39,10 +39,15 @@ _USAGE_KEY = "usage"
 
 
 
-@router.post("/v1/chat/completions")
-@router.post("/v1/completions")
-async def forward_completion(request: Request) -> Any:
-    """Reenvía la petición al servidor de inferencia y captura el ``usage``."""
+@router.api_route("/v1/{path:path}", methods=["GET", "POST"])
+async def forward_v1(request: Request, path: str) -> Any:
+    """Pasarela OpenAI-compatible completa.
+
+    - ``GET`` (p. ej. ``/v1/models``): reenvía la petición tal cual — Open WebUI y
+      similares validan la conexión listando modelos.
+    - ``POST /v1/chat/completions`` y ``/v1/completions``: además captura el ``usage``.
+    - Resto de ``POST``: passthrough puro.
+    """
     state = request.app.state
     settings = state.settings_manager.get()
     if settings.simulation_mode:
@@ -80,6 +85,14 @@ async def forward_completion(request: Request) -> Any:
         injected = True
 
     try:
+        if request.method == "GET":
+            # Listado de modelos y similares: passthrough (con query incluido).
+            get_url = f"{target}?{request.url.query}" if request.url.query else target
+            resp = await http.get(
+                get_url, headers=headers,
+                timeout=httpx.Timeout(30.0, connect=CONNECT_TIMEOUT_S),
+            )
+            return JSONResponse(status_code=resp.status_code, content=_safe_json(resp))
         if body and body.get("stream"):
             resp_stream = await _open_stream(http, target, headers, body_bytes)
             if injected and resp_stream.status_code >= 400:
