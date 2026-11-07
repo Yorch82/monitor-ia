@@ -130,8 +130,10 @@ directamente contra FastAPI (`:8000`, expuesto).
 | Pantalla Seguridad vacía | El servidor necesita montar `/var/log` y `nginx-logs`; revisa las fuentes en la web. |
 | Error de firma | Configura un Team y un bundle ID único en Xcode. |
 
-## Compilación
+## Compilación y CI
 
-Este proyecto no se pudo compilar dentro del entorno de desarrollo del repo (Windows),
-pero el código es SwiftUI/Swift Charts estándar para Xcode 16 y el proyecto se genera
-con XcodeGen. Si Xcode reporta algún detalle de API, abre un issue con el error exacto.
+[![iOS build](https://github.com/Yorch82/monitor-ia/actions/workflows/ios-build.yml/badge.svg)](https://github.com/Yorch82/monitor-ia/actions/workflows/ios-build.yml)
+
+La app se compila de forma automática en **GitHub Actions** sobre macOS 15 con
+**Xcode 16.4**, destino iOS Simulator y sin firma (`.github/workflows/ios-build.yml`).
+El proyecto usa SwiftUI/Swift Charts estándar y no tiene dependencias externas.

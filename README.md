@@ -1,5 +1,8 @@
 # Monitor IA — Panel de observabilidad para inferencia local
 
+[![iOS build](https://github.com/Yorch82/monitor-ia/actions/workflows/ios-build.yml/badge.svg)](https://github.com/Yorch82/monitor-ia/actions/workflows/ios-build.yml)
+[![Backend & frontend](https://github.com/Yorch82/monitor-ia/actions/workflows/ci.yml/badge.svg)](https://github.com/Yorch82/monitor-ia/actions/workflows/ci.yml)
+
 Dashboard en tiempo real para **monitorizar un modelo de IA que se ejecuta en tu propio servidor**
 (Ollama, llama.cpp, vLLM, LM Studio…): tokens, ocupación de contexto, GPU/VRAM, temperatura,
 ventilador, **potencia eléctrica**, **coste energético en euros** y RAM del sistema.
