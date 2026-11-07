@@ -9,6 +9,8 @@ ventilador, **potencia eléctrica**, **coste energético en euros** y RAM del si
   React + Tailwind + Recharts, tema oscuro tipo panel de control.
 - **Pestaña Seguridad**: intentos SSH, bloqueos de firewall, escaneos web, clasificación bot/usuario,
   país/ciudad/ISP de origen y métricas de amenaza del servidor.
+- **App iOS nativa** (SwiftUI, iPhone 16 Pro): el mismo dashboard/seguridad/ajustes con
+  gráficas Swift Charts, gauges y WebSocket en vivo — ver [`ios/README.md`](ios/README.md).
 - **Modo simulación** con datos sintéticos realistas para probar todo sin hardware ni modelo.
 
 ---
@@ -216,6 +218,11 @@ monitor-ia/
         └── pages/ (Dashboard, Security, Settings)
 ```
 
+Además, [`ios/`](ios/README.md) contiene la **app nativa SwiftUI** para iPhone 16 Pro
+(proyecto XcodeGen, sin dependencias externas): mismas tres pestañas, Swift Charts,
+gauges, WebSocket, hápticos y export CSV por share sheet. Se genera con
+`cd ios && xcodegen generate`.
+
 ---
 
 ## 7. Endpoints del backend
@@ -267,6 +274,28 @@ Ajustes del frontend en dev: `VITE_BACKEND_URL`/`VITE_API_TARGET` (por defecto `
 - **Streaming**: en engines que no emiten `usage` en el último chunk, la captura por streaming puede no estar disponible (usa no-streaming o Prometheus).
 - **Seguridad**: no hay autenticación — mantén el acceso restringido a LAN/VPN/Tailscale.
 - Los ajustes de la UI se persisten en SQLite (`backend/data/` o volumen `monitor-data` en Docker) con prioridad sobre `.env`.
+
+## 11. App iOS nativa (iPhone 16 Pro)
+
+El directorio [`ios/`](ios/README.md) contiene una app **SwiftUI + Swift Charts** sin
+dependencias externas que reutiliza la misma API y WebSocket del backend:
+
+- **Resumen** (KPIs, gráficas 1m/15m/1h/24h, gauges GPU/TDP/RAM, coste, alertas con hápticos)
+- **Seguridad** (SSH, firewall, escaneos web, bots, países, top IPs/usuarios/puertos/rutas)
+- **Ajustes** (URL LAN/VPN, precio kWh, inferencia, umbrales, export CSV por share sheet)
+
+Requisitos: Mac con Xcode 16+, XcodeGen (`brew install xcodegen`) y un iPhone con iOS 17+.
+Generación del proyecto y ejecución:
+
+```bash
+cd ios
+xcodegen generate
+open MonitorIA.xcodeproj   # selecciona Team, destino iPhone 16 Pro y Run
+```
+
+La app viene configurada por defecto con `http://192.168.1.35:8080` y permite cambiar a
+`http://100.115.55.87:8080` desde Ajustes. Incluye permiso de red local y excepción ATS
+para HTTP en LAN/VPN (ver notas de App Store en `ios/README.md`).
 
 ## Licencia
 

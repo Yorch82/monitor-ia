@@ -22,3 +22,9 @@ data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# iOS (el proyecto se genera con `xcodegen generate`)
+ios/*.xcodeproj
+ios/*.xcworkspace
+ios/DerivedData/
+ios/build/
