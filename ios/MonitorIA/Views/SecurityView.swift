@@ -36,9 +36,9 @@ struct SecurityView: View {
                             countriesPanel(security)
                             threatsPanel(security)
                             recentEventsPanel(security)
-                            if !security.sources.ssh.available
-                                || !security.sources.firewall.available
-                                || !security.sources.web.available {
+                            if security.sources.ssh.available != true
+                                || security.sources.firewall.available != true
+                                || security.sources.web.available != true {
                                 sourcesHelpPanel(security)
                             }
                             Text("Clasificación heurística bot/humano. Geolocalización opcional vía ip-api.com con caché local; las IPs privadas/CGNAT se muestran como Red local.")
