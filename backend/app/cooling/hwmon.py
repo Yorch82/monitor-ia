@@ -67,10 +67,11 @@ class HwmonScan:
 class HwmonProvider:
     """Escanea ``/sys/class/hwmon`` y aplica PWM a los ventiladores."""
 
-    def __init__(self, root: str, control_enabled: bool, min_pwm: float) -> None:
+    def __init__(self, root: str, control_enabled: bool, min_pwm: float, protected_ids: set[str] | None = None) -> None:
         self.root = Path(root)
         self.control_enabled = control_enabled
         self.min_pwm = min_pwm
+        self.protected_ids = protected_ids or set()
         self._fan_map: dict[str, FanChannel] = {}
         self._original_enable: dict[str, int] = {}
 
@@ -125,12 +126,15 @@ class HwmonProvider:
                         pwm_pct = round(min(100, max(0, raw_pwm / 255.0 * 100.0)))
                 label = _read_text(hwmon / f"fan{index}_label") or f"{chip} Fan {index}"
                 fan_id = _unique_id(f"{_slug(chip)}-fan{index}", seen_ids)
-                is_pump = any(hint in label.lower() for hint in _PUMP_HINTS)
+                is_protected = (
+                    any(hint in label.lower() for hint in _PUMP_HINTS)
+                    or fan_id in self.protected_ids
+                )
                 writable = (
                     self.control_enabled
                     and pwm_path.exists()
                     and os.access(pwm_path, os.W_OK)
-                    and not is_pump
+                    and not is_protected
                 )
                 channel = FanChannel(
                     id=fan_id,
@@ -139,7 +143,7 @@ class HwmonProvider:
                     pwm_pct=pwm_pct,
                     controllable=writable,
                     min_pwm_pct=self.min_pwm,
-                    is_protected=is_pump,
+                    is_protected=is_protected,
                     pwm_path=pwm_path if pwm_path.exists() else None,
                     enable_path=enable_path if enable_path.exists() else None,
                 )

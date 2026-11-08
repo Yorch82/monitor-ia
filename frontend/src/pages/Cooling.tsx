@@ -505,7 +505,7 @@ function FanCard({
       ) : (
         <div className="mt-3 text-center text-[9px] text-amber-300/80">
           {fan.is_protected
-            ? "Bomba protegida: control gestionado por la BIOS"
+            ? "Protegido: control gestionado por la BIOS"
             : !canControl
               ? "Activa el control para editar"
               : "Sin canal PWM escribible"}

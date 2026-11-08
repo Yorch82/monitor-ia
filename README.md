@@ -213,6 +213,7 @@ La pestaña **Refrigeración** monitoriza y opcionalmente controla los ventilado
 - **Seguridad térmica**: PWM mínimo 20 %, emergencia a 88 ºC (fuerza 100 %), liberación a 80 ºC y restauración
   del control de la BIOS al detener el backend (`COOLING_RESTORE_ON_EXIT=true`). Los canales de **bomba**
   (etiquetas que contienen pump/water/AIO) se detectan y se dejan **protegidos**: los perfiles no los modifican.
+  También puedes proteger canales sin etiqueta con `COOLING_PROTECTED_FANS=nct6797-fan7` (IDs separados por coma).
 - El perfil y los ajustes manuales persisten en SQLite y se aplican al arrancar si el control está habilitado.
 - Endpoints: `GET /api/cooling`, `PUT /api/cooling/profile`, `PUT /api/cooling/fans/{id}`,
   `POST /api/cooling/release`.

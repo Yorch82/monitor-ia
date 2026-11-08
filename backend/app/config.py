@@ -84,6 +84,13 @@ class AppConfig(BaseSettings):
     cooling_emergency_release_c: float = 80.0
     cooling_poll_interval_ms: int = 2000
     cooling_restore_on_exit: bool = True
+    # IDs de fan (p. ej. ``nct6797-fan7``) que NUNCA deben controlarse por PWM.
+    # Útil para proteger bombas o ventiladores de chipset sin etiqueta.
+    cooling_protected_fans: str = ""
+
+    @property
+    def cooling_protected_fan_list(self) -> set[str]:
+        return {item.strip() for item in self.cooling_protected_fans.split(",") if item.strip()}
 
     @property
     def security_path_list(self) -> list[str]:

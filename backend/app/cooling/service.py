@@ -57,6 +57,7 @@ class CoolingService:
             config.cooling_hwmon_root,
             control_enabled=config.cooling_control_enabled,
             min_pwm=self.min_pwm,
+            protected_ids=config.cooling_protected_fan_list,
         )
         self.gpu = GpuFanController(
             control_enabled=config.cooling_control_enabled,

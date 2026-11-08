@@ -557,7 +557,7 @@ private struct FanControlRow: View {
             } else {
                 Text(
                     fan.isProtected == true
-                        ? "Bomba protegida: control gestionado por la BIOS"
+                        ? "Protegido: control gestionado por la BIOS"
                         : canControl ? "Sin canal PWM escribible" : "Activa el control para editar"
                 )
                     .font(.system(size: 8))
