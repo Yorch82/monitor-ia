@@ -1,0 +1,27 @@
+# Overlay de CONTROL de refrigeración (solo Linux, con hardware compatible).
+#
+# ⚠️ Requiere acceso de escritura a /sys del host y privilegios elevados. Úsalo
+#     solo en tu servidor. Sin este overlay, Monitor IA muestra temperaturas y
+#     ventiladores en SOLO LECTURA.
+#
+# Arranque:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.cooling.yml up -d --build
+#
+# Requisitos:
+#   - Linux con driver hwmon (lm-sensors) que exponga pwm* (nct6775, it87…).
+#   - GPU NVIDIA con control de ventilador soportado (opcional).
+#   - Permisos para escribir en /sys/class/hwmon (el contenedor va privileged).
+services:
+  backend:
+    privileged: true
+    volumes:
+      - /sys:/host/sys:rw
+    environment:
+      COOLING_CONTROL_ENABLED: "true"
+      COOLING_HWMON_ROOT: /host/sys/class/hwmon
+      # Actívalo solo si tu GPU permite controlar el ventilador (desktop).
+      COOLING_GPU_FANS_ENABLED: "false"
+      COOLING_MIN_PWM_PCT: "20"
+      COOLING_EMERGENCY_TEMP_C: "88"
+      COOLING_EMERGENCY_RELEASE_C: "80"
+      COOLING_RESTORE_ON_EXIT: "true"

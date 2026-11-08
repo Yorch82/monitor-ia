@@ -161,6 +161,50 @@ async def reset_session(request: Request) -> dict[str, Any]:
     return {"status": "ok"}
 
 
+# ── refrigeración ────────────────────────────────────────────────────────────
+
+
+@router.get("/api/cooling")
+async def cooling(request: Request) -> Any:
+    """Temperaturas, ventiladores y estado de los perfiles de refrigeración."""
+    return request.app.state.cooling_service.snapshot()
+
+
+@router.put("/api/cooling/profile")
+async def set_cooling_profile(request: Request, payload: dict[str, Any]) -> Any:
+    from app.cooling.service import CoolingError
+
+    try:
+        return request.app.state.cooling_service.set_profile(str(payload.get("profile", "")))
+    except CoolingError as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"detail": f"Perfil inválido: {exc}"})
+
+
+@router.put("/api/cooling/fans/{fan_id:path}")
+async def set_cooling_fan(request: Request, fan_id: str, payload: dict[str, Any]) -> Any:
+    from app.cooling.service import CoolingError
+
+    try:
+        pwm = float(payload.get("pwm_pct"))
+        return request.app.state.cooling_service.set_fan_pwm(fan_id, pwm)
+    except CoolingError as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=400, content={"detail": "pwm_pct debe ser un número 0-100"})
+
+
+@router.post("/api/cooling/release")
+async def release_cooling(request: Request) -> Any:
+    from app.cooling.service import CoolingError
+
+    try:
+        return request.app.state.cooling_service.release_to_bios()
+    except CoolingError as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+
+
 # ── seguridad ────────────────────────────────────────────────────────────────
 
 

@@ -17,6 +17,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.routes import router as api_router
 from app.config import get_config
+from app.cooling.service import CoolingService
 from app.core.settings import RuntimeSettings, SettingsManager
 from app.core.tokens import TokenAggregator
 from app.inference.monitor import InferenceMonitor
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
             webhook_client=http,
         )
         security = SecurityService(config, store, http, security_recorder)
+        cooling = CoolingService(config, store, settings)
         sampler_ref["sampler"] = sampler
 
         app.state.telemetry_sampler = sampler
@@ -93,6 +95,7 @@ def create_app() -> FastAPI:
         app.state.http_client = http
         app.state.security_service = security
         app.state.security_recorder = security_recorder
+        app.state.cooling_service = cooling
         # El proxy necesita acceso al agregador de tokens vía proxy y al monitor.
         app.state.proxy_aggregator = aggregators["proxy"]
         app.state.token_aggregators = aggregators
@@ -102,12 +105,14 @@ def create_app() -> FastAPI:
         # El primer arranque del sampler ocurre tras completar el estado de la app.
         await sampler.start()
         await security.start()
+        await cooling.start()
         log.info("Monitor IA listo (intervalo=%dms, simulación=%s)", settings.get().refresh_interval_s * 1000, settings.get().simulation_mode)
         try:
             yield
         finally:
             await sampler.stop()
             await security.stop()
+            await cooling.stop()
             await http.aclose()
             store.close()
             log.info("Monitor IA detenido")

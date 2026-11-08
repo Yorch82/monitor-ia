@@ -144,6 +144,43 @@ export const IconTerminal = (p: IconProps) => (
   </svg>
 );
 
+export const IconFan = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="2.2" />
+    <path d="M12 9.8c0-4.2 1.3-6.8 3.7-6.8 2.3 0 3.5 2.1 3.5 4.4 0 2-1.7 3.7-4.8 4.2" />
+    <path d="M13.9 13.1c3.6 2.1 5.1 4.6 3.9 6.7-1.2 2-3.5 2-5.2.6-1.5-1.3-1.7-3.7-.5-6.3" />
+    <path d="M10.1 13.1c-3.6 2.1-6.6 2-7.5-.2-.9-2.2.6-4 2.8-4.8 1.9-.6 4 .3 5.6 2.4" />
+    <path d="M10.1 10.9C6.5 8.8 4.4 6.5 5.3 4.4c.9-2.2 3.4-2.2 5.2-.8 1.6 1.2 2 3.5 1.5 6.2" />
+  </svg>
+);
+
+export const IconThermometer = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0z" />
+    <path d="M12 9v6" />
+  </svg>
+);
+
+export const IconSnowflake = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M12 2v20M4.5 6.5l15 11M19.5 6.5l-15 11" />
+    <path d="M9 4l3 2 3-2M9 20l3-2 3 2M4.5 9.5l1 3-2 3M19.5 14.5l-1-3 2-3M19.5 9.5l-1 3 2 3M4.5 14.5l1-3-2-3" />
+  </svg>
+);
+
+export const IconFlame = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M8.5 14.5A3.5 3.5 0 0 0 12 18a3.5 3.5 0 0 0 3.5-3.5c0-2-1.5-3.5-3-5-.8 2-2 3-4 5z" />
+    <path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-4 2-5 0 2 1 3 3 3 0-3-1-6 0-9z" />
+  </svg>
+);
+
+export const IconWind = (p: IconProps) => (
+  <svg {...base} {...p}>
+    <path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7a2 2 0 1 1-2 2" />
+  </svg>
+);
+
 export const IconX = (p: IconProps) => (
   <svg {...base} {...p}>
     <path d="M18 6L6 18M6 6l12 12" />

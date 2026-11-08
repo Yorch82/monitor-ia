@@ -73,6 +73,18 @@ class AppConfig(BaseSettings):
     security_retention_hours: int = 168  # 7 días
     geoip_enabled: bool = True
 
+    # ── Refrigeración ─────────────────────────────────────────────────────────
+    # Por defecto solo se monitoriza; escribir PWM requiere habilitarlo y montar
+    # /sys del host (ver docker-compose.cooling.yml). Fail-safe: mínimo 20 %.
+    cooling_control_enabled: bool = False
+    cooling_gpu_fans_enabled: bool = False
+    cooling_hwmon_root: str = "/sys/class/hwmon"
+    cooling_min_pwm_pct: float = 20.0
+    cooling_emergency_temp_c: float = 88.0
+    cooling_emergency_release_c: float = 80.0
+    cooling_poll_interval_ms: int = 2000
+    cooling_restore_on_exit: bool = True
+
     @property
     def security_path_list(self) -> list[str]:
         return [p.strip() for p in self.security_log_paths.split(",") if p.strip()]

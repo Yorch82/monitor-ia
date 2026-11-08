@@ -34,6 +34,12 @@ final class MonitorStore: ObservableObject {
     @Published private(set) var settingsError: String?
     @Published private(set) var isSavingSettings = false
 
+    // Refrigeración
+    @Published private(set) var cooling: CoolingSnapshot?
+    @Published private(set) var coolingError: String?
+    @Published private(set) var isCoolingLoading = false
+    @Published private(set) var isCoolingUpdating = false
+
     private let session: URLSession
     private let defaults: UserDefaults
     private let decoder: JSONDecoder
@@ -122,6 +128,73 @@ final class MonitorStore: ObservableObject {
         guard newRange != securityRange else { return }
         securityRange = newRange
         Task { await loadSecurity() }
+    }
+
+    // MARK: - Refrigeración
+
+    func loadCooling() async {
+        guard let api, !isCoolingLoading else { return }
+        isCoolingLoading = true
+        do {
+            cooling = try await api.get("/api/cooling")
+            coolingError = nil
+        } catch {
+            coolingError = friendly(error)
+        }
+        isCoolingLoading = false
+    }
+
+    @discardableResult
+    func applyCoolingProfile(_ profile: String) async -> Bool {
+        guard let api else { return false }
+        isCoolingUpdating = true
+        defer { isCoolingUpdating = false }
+        do {
+            let snapshot: CoolingSnapshot = try await api.send(
+                "PUT", "/api/cooling/profile", body: CoolingProfileUpdate(profile: profile)
+            )
+            cooling = snapshot
+            coolingError = nil
+            return true
+        } catch {
+            coolingError = friendly(error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func applyFanPWM(fanID: String, pwmPct: Double) async -> Bool {
+        guard let api else { return false }
+        isCoolingUpdating = true
+        defer { isCoolingUpdating = false }
+        do {
+            let encoded = fanID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fanID
+            let snapshot: CoolingSnapshot = try await api.send(
+                "PUT", "/api/cooling/fans/\(encoded)", body: CoolingFanUpdate(pwmPct: pwmPct)
+            )
+            cooling = snapshot
+            coolingError = nil
+            return true
+        } catch {
+            coolingError = friendly(error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func releaseCoolingToBIOS() async -> Bool {
+        guard let api else { return false }
+        isCoolingUpdating = true
+        defer { isCoolingUpdating = false }
+        do {
+            let snapshot: CoolingSnapshot = try await api.post("/api/cooling/release")
+            cooling = snapshot
+            coolingError = nil
+            return true
+        } catch {
+            coolingError = friendly(error)
+            return false
+        }
     }
 
     // MARK: - WebSocket
@@ -425,6 +498,7 @@ final class MonitorStore: ObservableObject {
         points = []
         security = nil
         settings = nil
+        cooling = nil
         connection = .connecting
         reconnectAttempt = 0
         hasReceivedFrame = false

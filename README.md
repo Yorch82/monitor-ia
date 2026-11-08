@@ -12,8 +12,10 @@ ventilador, **potencia eléctrica**, **coste energético en euros** y RAM del si
   React + Tailwind + Recharts, tema oscuro tipo panel de control.
 - **Pestaña Seguridad**: intentos SSH, bloqueos de firewall, escaneos web, clasificación bot/usuario,
   país/ciudad/ISP de origen y métricas de amenaza del servidor.
-- **App iOS nativa** (SwiftUI, iPhone 16 Pro): el mismo dashboard/seguridad/ajustes con
-  gráficas Swift Charts, gauges y WebSocket en vivo — ver [`ios/README.md`](ios/README.md).
+- **Pestaña Refrigeración**: temperaturas CPU/GPU, RPM y PWM de ventiladores, perfiles
+  silencioso/equilibrado/máximo/automático y control manual (opt-in, fail-safe).
+- **App iOS nativa** (SwiftUI, iPhone 16 Pro): el mismo dashboard, refrigeración, seguridad y
+  ajustes con gráficas Swift Charts, gauges y WebSocket en vivo — ver [`ios/README.md`](ios/README.md).
 - **Modo simulación** con datos sintéticos realistas para probar todo sin hardware ni modelo.
 
 ---
@@ -62,12 +64,14 @@ ventilador, **potencia eléctrica**, **coste energético en euros** y RAM del si
 | **Coste** | € en tiempo real y acumulado (`kWh × precio`), proyección hora/día/mes al ritmo actual, **€ por 1.000 tokens generados**, presupuesto diario con alerta |
 | **Sistema** | RAM usada/total (GB, %), CPU %, swap, uptime |
 | **Seguridad** | intentos SSH (fallidos/exitosos/escaneos), bloqueos de firewall y puertos, escaneos web, IPs únicas, países/ciudad/ISP, usuarios objetivo, rutas escaneadas, bots vs humanos |
+| **Refrigeración** | temperatura CPU/GPU/sensores, RPM y PWM por ventilador, perfiles (silencioso/equilibrado/máximo/automático), control manual y emergencia térmica |
 
 ### Fuentes de datos
 - **GPU y potencia**: NVIDIA **NVML** (`nvidia-ml-py`), con capa de abstracción preparada para **AMD** (`rocm-smi --json`) y **Apple Silicon** (`powermetrics`). Multi-GPU: una tarjeta por GPU.
 - **RAM/CPU/swap**: `psutil`.
 - **Tokens y contexto**: proxy OpenAI-compatible (recomendado, captura `usage`) y/o counters Prometheus de llama.cpp (`llamacpp:tokens_*_total`) y vLLM (`vllm:prompt_tokens_total`, `vllm:generation_tokens_total`).
 - **Seguridad**: `auth.log`/`secure` (SSH), `ufw.log` (firewall), access log de nginx (escaneos web) y geolocalización de IPs con ip-api.com + caché SQLite.
+- **Refrigeración**: sensores y PWM vía **hwmon** (`/sys/class/hwmon`, lm-sensors), **NVML** para GPU y un simulador para probar sin hardware. Control opt-in con escritura en sysfs.
 - **Simulación**: máquina de estados sintética (idle→prompt→generate) con inercia térmica y ruido, totalmente realista.
 
 ---
@@ -152,6 +156,8 @@ probar táctilmente el dashboard, las alertas y los ajustes desde cualquier PC.
 - **Panel de coste**: sesión, diario, proyecciones a 1 h/día/mes y **€/1 k tokens** con barra de presupuesto diario.
 - **Pestaña Seguridad** (`/security`): estado de las fuentes (SSH, firewall, nginx, GeoIP), intentos SSH,
   IPs/países con más actividad, bots vs humanos, usuarios objetivo, puertos y rutas escaneadas y eventos recientes.
+- **Pestaña Refrigeración** (`/cooling`): temperaturas CPU/GPU, RPM/PWM de cada ventilador, perfiles
+  silencioso/equilibrado/máximo/automático, slider manual, ventilación máxima inmediata y liberación del control a la BIOS.
 - **Ajustes** (`/settings`): €/kWh, intervalo de refresco, URL del servidor de inferencia, ventana de contexto, fuente de tokens, webhook, retención, umbrales y toogles de simulación/proveedor.
 - **Reiniciar sesión**: desde Ajustes, borra hueco de tokens/energía/coste de la sesión actual (el histórico en disco no se toca).
 - **Alertas visuales**: banner superior + toasts automáticos cuando se activa un umbral.
@@ -178,6 +184,38 @@ El backend lee los logs del host (solo lectura) mediante los volúmenes que ya t
   con las fuentes en ámbar (no rompe nada).
 - Endpoint: `GET /api/security?range=1h|24h|7d`.
 
+### Refrigeración del servidor
+
+La pestaña **Refrigeración** monitoriza y opcionalmente controla los ventiladores:
+
+| Perfil | Uso recomendado | PWM |
+|---|---|---|
+| Silencioso | Invierno / mínimo ruido | 30 % |
+| Equilibrado | Uso diario | 50 % |
+| Máximo | Verano / cargas altas | 100 % |
+| Automático | Curva según temperatura | 25–100 % |
+| Personalizado | Ajuste manual por ventilador | slider |
+
+- **Monitorización** (siempre): temperaturas por sensor (CPU, GPU NVIDIA, placa, NVMe), RPM, PWM y estado.
+- **Control**: desactivado por defecto (`COOLING_CONTROL_ENABLED=false`, solo lectura). Para habilitarlo se
+  necesita un servidor Linux con driver **hwmon** que exponga `pwm*` y montar `/sys` con permisos de escritura:
+
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+                 -f docker-compose.cooling.yml up -d --build
+  ```
+
+  ⚠️ El overlay usa `privileged: true` y `/sys` en escritura; es potente y sensible. Úsalo solo en tu servidor.
+  Comprueba antes con `sensors` y `ls /sys/class/hwmon/hwmon*/pwm*`. Si no aparecen canales PWM, el panel
+  seguirá funcionando en **solo lectura**.
+- **Ventiladores de GPU** (opcional): `COOLING_GPU_FANS_ENABLED=true` usa NVML; no todas las tarjetas/drivers
+  lo permiten. Desactivado por defecto.
+- **Seguridad térmica**: PWM mínimo 20 %, emergencia a 88 ºC (fuerza 100 %), liberación a 80 ºC y restauración
+  del control de la BIOS al detener el backend (`COOLING_RESTORE_ON_EXIT=true`).
+- El perfil y los ajustes manuales persisten en SQLite y se aplican al arrancar si el control está habilitado.
+- Endpoints: `GET /api/cooling`, `PUT /api/cooling/profile`, `PUT /api/cooling/fans/{id}`,
+  `POST /api/cooling/release`.
+
 ### Alertas configurables
 contexto > 90 % · temperatura GPU > 80 ºC · VRAM > 95 % · RAM > 90 % · coste diario > límite €.
 Con `WEBHOOK_URL` configurado, cada activación/escalado dispara un `POST` JSON:
@@ -195,22 +233,24 @@ Con `WEBHOOK_URL` configurado, cada activación/escalado dispara un `POST` JSON:
 monitor-ia/
 ├── docker-compose.yml            # backend + frontend (nginx) + volúmenes de logs
 ├── docker-compose.gpu.yml        # overlay para NVML/GPU NVIDIA real
+├── docker-compose.cooling.yml    # overlay de control PWM (privileged + /sys rw)
 ├── .env.example
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt          # + requirements-dev.txt (pytest)
 │   ├── pytest.ini
-│   ├── tests/                    # costes, contexto, alertas, settings, seguridad
+│   ├── tests/                    # costes, contexto, alertas, settings, seguridad, refrigeración
 │   └── app/
 │       ├── config.py             # .env → AppConfig (pydantic-settings)
 │       ├── main.py               # create_app + lifespan (wiring completo)
 │       ├── core/                 # modelos tipados, cálculos puros, settings runtime,
 │       │                         # agregadores de tokens y alertas (todo y solo esto)
 │       ├── metrics/              # base.py (fábrica) + nvidia.py, amd.py, apple.py, system.py
+│       ├── cooling/              # profiles.py, hwmon.py, gpu_fans.py, simulator.py, service.py
 │       ├── inference/            # monitor.py (health+/metrics+contexto) y proxy.py (usage)
 │       ├── security/             # parsers.py (SSH/UFW/nginx), middleware.py, service.py (GeoIP)
 │       ├── telemetry/            # sampler.py, simulator.py, hub.py (WS), notifier.py (webhook)
-│       ├── storage/database.py   # SQLite: samples, seguridad, settings, CSV, bucketizado
+│       ├── storage/database.py   # SQLite: samples, seguridad, settings, refrigeración, CSV
 │       └── api/routes.py         # REST + WebSocket
 └── frontend/
     ├── Dockerfile + nginx.conf   # nginx también escribe el access log de seguridad
@@ -218,12 +258,12 @@ monitor-ia/
         ├── state/MonitorContext.tsx   # WebSocket + histórico + rango compartido
         ├── lib/ (api, format, points) # fetch, unidades, mapeo snapshot→chart
         ├── components/ (layout, dashboard, charts, ui) # KPIs, gauges, charts, toasts
-        └── pages/ (Dashboard, Security, Settings)
+        └── pages/ (Dashboard, Cooling, Security, Settings)
 ```
 
 Además, [`ios/`](ios/README.md) contiene la **app nativa SwiftUI** para iPhone 16 Pro
-(proyecto XcodeGen, sin dependencias externas): mismas tres pestañas, Swift Charts,
-gauges, WebSocket, hápticos y export CSV por share sheet. Se genera con
+(proyecto XcodeGen, sin dependencias externas): Resumen, Refrigeración, Seguridad y Ajustes,
+Swift Charts, gauges, WebSocket, hápticos y export CSV por share sheet. Se genera con
 `cd ios && xcodegen generate`.
 
 ---
@@ -241,6 +281,10 @@ gauges, WebSocket, hápticos y export CSV por share sheet. Se genera con
 | POST | `/api/settings/reset` | vuelve a los defaults del `.env` |
 | POST | `/api/session/reset` | reinicia tokens/energía/coste de sesión |
 | GET | `/api/security?range=1h\|24h\|7d` | intentos SSH, firewall, escaneos web, países y bots |
+| GET | `/api/cooling` | temperaturas, RPM/PWM, perfiles y estado del control |
+| PUT | `/api/cooling/profile` | aplica un perfil (`silent`, `balanced`, `max`, `auto`) |
+| PUT | `/api/cooling/fans/{id}` | PWM manual de un ventilador (`pwm_pct` 0-100) |
+| POST | `/api/cooling/release` | devuelve el control a la BIOS/EC |
 | POST | `/proxy/v1/chat/completions`, `/proxy/v1/completions`, `/proxy/v1/responses` | pasarela OpenAI-compatible con captura de usage |
 | GET | `/docs` | Swagger/OpenAPI |
 
@@ -252,9 +296,9 @@ gauges, WebSocket, hápticos y export CSV por share sheet. Se genera con
 cd backend
 python -m venv .venv && source .venv/bin/activate   # o activa .venv\Scripts\activate en Windows
 pip install -r requirements-dev.txt
-pytest        # → 45 tests: costes (€, kWh, proyecciones, €/1k), contexto (70/90, límites),
-              #    alertas (umbrales, cooldown, escalado), settings, energía SQLite y
-              #    parsers de seguridad (SSH/UFW/nginx, GeoIP, bots)
+pytest        # → 52 tests: costes (€, kWh, proyecciones, €/1k), contexto (70/90, límites),
+              #    alertas (umbrales, cooldown, escalado), settings, energía SQLite,
+              #    parsers de seguridad y perfiles/curva de refrigeración
 ```
 
 ## 9. Desarrollo sin Docker
@@ -276,6 +320,9 @@ Ajustes del frontend en dev: `VITE_BACKEND_URL`/`VITE_API_TARGET` (por defecto `
 - **Contexto**: se observa vía proxy/`usage`; con Prometheus no hay uso exacto de ventana (mostrará "sin datos" salvo simulación/proxy).
 - **Streaming**: en engines que no emiten `usage` en el último chunk, la captura por streaming puede no estar disponible (usa no-streaming o Prometheus).
 - **Seguridad**: no hay autenticación — mantén el acceso restringido a LAN/VPN/Tailscale.
+- **Refrigeración**: el control PWM depende del hardware/driver. En Windows/Docker Desktop o sin canales
+  `pwm*` solo se monitoriza. El overlay de control es `privileged` y monta `/sys` en escritura: úsalo con cuidado
+  y revisa los perfiles/permissions antes de dejarlo en producción.
 - Los ajustes de la UI se persisten en SQLite (`backend/data/` o volumen `monitor-data` en Docker) con prioridad sobre `.env`.
 
 ## 11. App iOS nativa (iPhone 16 Pro)
@@ -284,6 +331,7 @@ El directorio [`ios/`](ios/README.md) contiene una app **SwiftUI + Swift Charts*
 dependencias externas que reutiliza la misma API y WebSocket del backend:
 
 - **Resumen** (KPIs, gráficas 1m/15m/1h/24h, gauges GPU/TDP/RAM, coste, alertas con hápticos)
+- **Refrigeración** (temperaturas, RPM/PWM, perfiles y control manual con seguridad térmica)
 - **Seguridad** (SSH, firewall, escaneos web, bots, países, top IPs/usuarios/puertos/rutas)
 - **Ajustes** (URL LAN/VPN, precio kWh, inferencia, umbrales, export CSV por share sheet)
 

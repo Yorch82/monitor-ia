@@ -9,6 +9,8 @@ venv/
 node_modules/
 dist/
 dist-ssr/
+frontend/.env.local
+frontend/.env.*.local
 
 # Datos locales (SQLite, .env reales)
 data/

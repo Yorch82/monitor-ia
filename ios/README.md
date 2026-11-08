@@ -19,6 +19,11 @@ energético y seguridad del servidor.
   - Coste de sesión/día, proyecciones hora/día/mes y €/1.000 tokens.
   - Alertas visuales y **haptic warning** al aparecer una alerta crítica nueva.
   - WebSocket en vivo con reconexión exponencial y pausa en segundo plano.
+- **Refrigeración**
+  - Temperaturas CPU/GPU/sensores, RPM y PWM de cada ventilador.
+  - Perfiles **Silencioso / Equilibrado / Máximo / Automático**, control manual por
+    ventilador y liberación del control a la BIOS.
+  - Protección térmica (emergencia al 100 %), PWM mínimo y restauración al salir.
 - **Seguridad**
   - Intentos SSH, logins, escaneos y bloqueos de firewall.
   - Clasificación **bot / humano / desconocido** y países con banderas (GeoIP).
@@ -79,10 +84,12 @@ ios/
     │   └── Formatting.swift        # formato es-ES de unidades y fechas
     ├── Models/
     │   ├── TelemetryModels.swift   # espejo de /api/telemetry y /api/history
+    │   ├── CoolingModels.swift     # /api/cooling y acciones de perfiles/ventiladores
     │   ├── SecurityModels.swift    # espejo de /api/security
     │   └── SettingsModels.swift    # /api/settings + borrador editable
     ├── Views/
     │   ├── DashboardView.swift
+    │   ├── CoolingView.swift
     │   ├── SecurityView.swift
     │   ├── SettingsView.swift
     │   └── Components/
@@ -102,6 +109,7 @@ ios/
 | Tiempo real | `WS /ws/telemetry` |
 | Histórico | `GET /api/history?range=1m\|15m\|1h\|24h` |
 | Seguridad | `GET /api/security?range=1h\|24h\|7d` |
+| Refrigeración | `GET /api/cooling`, `PUT /api/cooling/profile`, `PUT /api/cooling/fans/{id}`, `POST /api/cooling/release` |
 | Ajustes | `GET/PUT /api/settings`, `POST /api/settings/reset` |
 | Acciones | `POST /api/session/reset` |
 | CSV | `GET /api/export.csv?range=…` |
@@ -128,6 +136,7 @@ directamente contra FastAPI (`:8000`, expuesto).
 | Funciona en Safari y no en la app | Acepta el permiso de Red Local; revisa Ajustes → URL. |
 | Gráficas sin datos | El backend está en modo live sin tráfico de tokens; usa el proxy `/proxy/v1` o el modo simulación. |
 | Pantalla Seguridad vacía | El servidor necesita montar `/var/log` y `nginx-logs`; revisa las fuentes en la web. |
+| Refrigeración en solo lectura | El control está desactivado o el hardware no expone `pwm*`; usa el overlay `docker-compose.cooling.yml` en el servidor. |
 | Error de firma | Configura un Team y un bundle ID único en Xcode. |
 
 ## Compilación y CI

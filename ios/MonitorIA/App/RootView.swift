@@ -14,6 +14,11 @@ struct RootView: View {
                     Label("Resumen", systemImage: "waveform.path.ecg")
                 }
 
+            CoolingView()
+                .tabItem {
+                    Label("Refrigeración", systemImage: "wind")
+                }
+
             SecurityView()
                 .tabItem {
                     Label("Seguridad", systemImage: "shield.lefthalf.filled")

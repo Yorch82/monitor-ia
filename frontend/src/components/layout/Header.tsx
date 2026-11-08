@@ -4,7 +4,7 @@ import { NavLink } from "react-router-dom";
 import { useMonitor } from "../../state/MonitorContext";
 import { exportCsvUrl } from "../../lib/api";
 import type { Range } from "../../types/telemetry";
-import { IconActivity, IconDownload, IconSettings, IconShield } from "../Icons";
+import { IconActivity, IconDownload, IconFan, IconSettings, IconShield } from "../Icons";
 import { RANGES } from "../../lib/points";
 
 function ConnectionBadge() {
@@ -42,6 +42,7 @@ export function Header() {
   const { range } = useMonitor();
   const navItems = [
     { to: "/", label: "Dashboard", end: true, icon: <IconActivity className="h-4 w-4" /> },
+    { to: "/cooling", label: "Refrigeración", end: false, icon: <IconFan className="h-4 w-4" /> },
     { to: "/security", label: "Seguridad", end: false, icon: <IconShield className="h-4 w-4" /> },
     { to: "/settings", label: "Ajustes", end: false, icon: <IconSettings className="h-4 w-4" /> },
   ];

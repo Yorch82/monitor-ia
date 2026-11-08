@@ -263,6 +263,30 @@ class HistoryStore:
             self._conn.execute("DELETE FROM settings WHERE key = 'runtime'")
             self._conn.commit()
 
+    # ── refrigeración: estado persistido ─────────────────────────────────────
+
+    def load_cooling_state(self) -> dict[str, Any] | None:
+        """Perfil/overrides de refrigeración guardados (clave 'cooling')."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM settings WHERE key = 'cooling'"
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row[0])
+        except json.JSONDecodeError:
+            return None
+
+    def save_cooling_state(self, state: dict[str, Any]) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('cooling', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (json.dumps(state, ensure_ascii=False),),
+            )
+            self._conn.commit()
+
     # ── seguridad: eventos, offsets y geolocalización ──────────────────────
 
     def insert_security_events(self, events: list[dict[str, Any]]) -> None:
