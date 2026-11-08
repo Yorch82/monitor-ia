@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 
 _CPU_HINTS = ("coretemp", "k10temp", "zenpower", "cpu", "package", "tctl", "tdie")
 _STORAGE_HINTS = ("nvme", "composite", "ssd")
+_PUMP_HINTS = ("pump", "water", "aio", "bomba")
 
 
 @dataclass
@@ -36,6 +37,7 @@ class FanChannel:
     controllable: bool = False
     min_pwm_pct: float = 20.0
     last_error: str | None = None
+    is_protected: bool = False
     pwm_path: Path | None = field(default=None, repr=False)
     enable_path: Path | None = field(default=None, repr=False)
 
@@ -50,6 +52,7 @@ class FanChannel:
             "controllable": self.controllable,
             "min_pwm_pct": self.min_pwm_pct,
             "last_error": self.last_error,
+            "is_protected": self.is_protected,
         }
 
 
@@ -122,10 +125,12 @@ class HwmonProvider:
                         pwm_pct = round(min(100, max(0, raw_pwm / 255.0 * 100.0)))
                 label = _read_text(hwmon / f"fan{index}_label") or f"{chip} Fan {index}"
                 fan_id = _unique_id(f"{_slug(chip)}-fan{index}", seen_ids)
+                is_pump = any(hint in label.lower() for hint in _PUMP_HINTS)
                 writable = (
                     self.control_enabled
                     and pwm_path.exists()
                     and os.access(pwm_path, os.W_OK)
+                    and not is_pump
                 )
                 channel = FanChannel(
                     id=fan_id,
@@ -134,6 +139,7 @@ class HwmonProvider:
                     pwm_pct=pwm_pct,
                     controllable=writable,
                     min_pwm_pct=self.min_pwm,
+                    is_protected=is_pump,
                     pwm_path=pwm_path if pwm_path.exists() else None,
                     enable_path=enable_path if enable_path.exists() else None,
                 )

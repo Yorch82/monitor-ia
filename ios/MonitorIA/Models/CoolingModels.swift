@@ -36,6 +36,7 @@ struct CoolingFan: Codable, Identifiable, Hashable {
     let controllable: Bool
     let minPwmPct: Double
     let lastError: String?
+    let isProtected: Bool?
 }
 
 struct CoolingProfileInfo: Codable, Identifiable {

@@ -462,7 +462,7 @@ function FanCard({
             <div className="text-xs font-semibold text-slate-200">{fan.label}</div>
             <div className="text-[9px] uppercase tracking-widest text-slate-500">
               {fan.kind === "gpu" ? "GPU · " : "Sistema · "}
-              {fan.controllable ? "controlable" : "solo lectura"}
+              {fan.is_protected ? "bomba protegida" : fan.controllable ? "controlable" : "solo lectura"}
             </div>
           </div>
         </div>
@@ -504,7 +504,11 @@ function FanCard({
         </button>
       ) : (
         <div className="mt-3 text-center text-[9px] text-amber-300/80">
-          {!canControl ? "Activa el control para editar" : "Sin canal PWM escribible"}
+          {fan.is_protected
+            ? "Bomba protegida: control gestionado por la BIOS"
+            : !canControl
+              ? "Activa el control para editar"
+              : "Sin canal PWM escribible"}
         </div>
       )}
     </div>

@@ -211,7 +211,8 @@ La pestaña **Refrigeración** monitoriza y opcionalmente controla los ventilado
 - **Ventiladores de GPU** (opcional): `COOLING_GPU_FANS_ENABLED=true` usa NVML; no todas las tarjetas/drivers
   lo permiten. Desactivado por defecto.
 - **Seguridad térmica**: PWM mínimo 20 %, emergencia a 88 ºC (fuerza 100 %), liberación a 80 ºC y restauración
-  del control de la BIOS al detener el backend (`COOLING_RESTORE_ON_EXIT=true`).
+  del control de la BIOS al detener el backend (`COOLING_RESTORE_ON_EXIT=true`). Los canales de **bomba**
+  (etiquetas que contienen pump/water/AIO) se detectan y se dejan **protegidos**: los perfiles no los modifican.
 - El perfil y los ajustes manuales persisten en SQLite y se aplican al arrancar si el control está habilitado.
 - Endpoints: `GET /api/cooling`, `PUT /api/cooling/profile`, `PUT /api/cooling/fans/{id}`,
   `POST /api/cooling/release`.

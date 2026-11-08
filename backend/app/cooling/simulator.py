@@ -90,6 +90,7 @@ class CoolingSimulator:
                     "controllable": True,
                     "min_pwm_pct": self.min_pwm,
                     "last_error": None,
+                    "is_protected": False,
                 }
             )
         gpu_pwm = int(round(self._gpu_fan["pwm"]))
@@ -104,6 +105,7 @@ class CoolingSimulator:
                 "controllable": True,
                 "min_pwm_pct": self.min_pwm,
                 "last_error": None,
+                "is_protected": False,
             }
         )
         return result

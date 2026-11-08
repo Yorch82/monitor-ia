@@ -111,6 +111,7 @@ class GpuFanController:
                     controllable=controllable,
                     min_pwm_pct=self.min_pwm,
                     last_error=self._fan_errors.get(fan_id),
+                    is_protected=False,
                 )
                 fans.append(channel.to_dict())
                 if controllable:

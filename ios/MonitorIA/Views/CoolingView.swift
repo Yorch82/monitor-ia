@@ -507,7 +507,7 @@ private struct FanControlRow: View {
                     Text(fan.label)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("\(fan.kind == "gpu" ? "GPU" : "SISTEMA") · \(fan.controllable ? "CONTROLABLE" : "SOLO LECTURA")")
+                    Text("\(fan.kind == "gpu" ? "GPU" : "SISTEMA") · \(fan.isProtected == true ? "BOMBA PROTEGIDA" : fan.controllable ? "CONTROLABLE" : "SOLO LECTURA")")
                         .font(.system(size: 7))
                         .tracking(0.5)
                         .foregroundStyle(Theme.textMuted)
@@ -555,7 +555,11 @@ private struct FanControlRow: View {
                 .buttonStyle(GhostButtonStyle())
                 .disabled(isUpdating || Int(value) == Int(fan.pwmPct ?? -1))
             } else {
-                Text(canControl ? "Sin canal PWM escribible" : "Activa el control para editar")
+                Text(
+                    fan.isProtected == true
+                        ? "Bomba protegida: control gestionado por la BIOS"
+                        : canControl ? "Sin canal PWM escribible" : "Activa el control para editar"
+                )
                     .font(.system(size: 8))
                     .foregroundStyle(Theme.amber.opacity(0.8))
                     .frame(maxWidth: .infinity)

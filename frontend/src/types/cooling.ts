@@ -35,6 +35,7 @@ export interface CoolingFan {
   controllable: boolean;
   min_pwm_pct: number;
   last_error: string | null;
+  is_protected?: boolean;
 }
 
 export interface CoolingProfileInfo {
