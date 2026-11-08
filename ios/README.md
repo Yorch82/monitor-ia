@@ -139,6 +139,11 @@ directamente contra FastAPI (`:8000`, expuesto).
 | Refrigeración en solo lectura | El control está desactivado o el hardware no expone `pwm*`; usa el overlay `docker-compose.cooling.yml` en el servidor. |
 | Error de firma | Configura un Team y un bundle ID único en Xcode. |
 
+> **Si no conecta al servidor:** ve a **Ajustes → URL del dashboard/backend**, pulsa
+> **Tailscale** (`http://100.115.55.87:8080`) y **Aplicar**. No uses
+> `https://claudio.tailf02b11.ts.net` (puerto 443: Open WebUI) ni una IP LAN antigua.
+> El editor de servidor se muestra incluso cuando la URL actual no responde.
+
 ## Compilación y CI
 
 [![iOS build](https://github.com/Yorch82/monitor-ia/actions/workflows/ios-build.yml/badge.svg)](https://github.com/Yorch82/monitor-ia/actions/workflows/ios-build.yml)

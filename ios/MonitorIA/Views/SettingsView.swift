@@ -51,10 +51,13 @@ struct SettingsView: View {
                         bannerView(banner, isError: bannerIsError)
                     }
 
+                    // El editor de servidor debe estar siempre disponible, incluso si
+                    // la URL actual no responde y no se pudieron cargar los ajustes.
+                    serverPanel
+
                     if !loaded {
                         loadingPanel
                     } else {
-                        serverPanel
                         energyPanel
                         inferencePanel
                         samplingPanel
@@ -108,6 +111,7 @@ struct SettingsView: View {
     // MARK: - Carga / guardado
 
     private func loadSettings() async {
+        serverField = store.serverURL
         if store.settings == nil {
             await store.loadSettings()
         }
@@ -198,9 +202,9 @@ struct SettingsView: View {
         Panel(title: "Servidor de Monitor IA", systemImage: "server.rack") {
             FieldBox(
                 label: "URL del dashboard/backend",
-                help: "Debe apuntar al frontend del servidor (nginx) o directamente al backend. Acepta IP o nombre."
+                help: "Por Tailscale usa http://100.115.55.87:8080 (o http://claudio.tailf02b11.ts.net:8080). No uses https://claudio.tailf02b11.ts.net: ese 443 sirve Open WebUI, no Monitor IA."
             ) {
-                TextField("http://192.168.1.35:8080", text: $serverField)
+                TextField("http://100.115.55.87:8080", text: $serverField)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
@@ -211,7 +215,7 @@ struct SettingsView: View {
 
             HStack(spacing: 6) {
                 quickServerButton("LAN", value: "http://192.168.1.35:8080")
-                quickServerButton("VPN", value: "http://100.115.55.87:8080")
+                quickServerButton("Tailscale", value: "http://100.115.55.87:8080")
                 Spacer()
                 Button {
                     updateServer()

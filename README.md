@@ -350,6 +350,11 @@ La app viene configurada por defecto con `http://192.168.1.35:8080` y permite ca
 `http://100.115.55.87:8080` desde Ajustes. Incluye permiso de red local y excepción ATS
 para HTTP en LAN/VPN (ver notas de App Store en `ios/README.md`).
 
+> **Si la app no conecta:** el editor de URL está siempre visible en Ajustes (aunque el
+> servidor actual no responda). Pulsa **Tailscale** (usa `http://100.115.55.87:8080`) y
+> **Aplicar**. La URL `https://claudio.tailf02b11.ts.net` es Open WebUI (puerto 443), no
+> el panel Monitor IA; este escucha en el puerto 8080.
+
 ## Licencia
 
 MIT — ver [LICENSE](LICENSE).
